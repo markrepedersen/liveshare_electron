@@ -1,27 +1,44 @@
 import {promises as fs} from "fs";
-import {app, remote, ipcRenderer, BrowserWindow} from "electron";
+import {remote, ipcRenderer} from "electron";
 import {edit, require as acerequire} from "ace-builds";
+import {createConnection, Socket} from "net";
 
+const app = remote.app;
 const dialog = remote.dialog;
 const modes = acerequire("ace/ext/modelist");
 
 let file: string;
 let editor: any;
+let socket: Socket;
+
+function makeConnection() {
+  socket = createConnection({host: "localhost", port: 2000}, () =>
+    console.log("Connected to server.")
+  );
+
+  socket.on("data", (data) => {
+    console.log(data.toString());
+    // socket.end();
+  });
+
+  socket.on("end", () => {
+    console.log("disconnected from server");
+  });
+}
 
 /**
  * Opens a file in the editor
  * @param {String} [fileToOpen] A specific file to open.  Omit to show the open dialog.
  */
 async function open(fileToOpen?: string) {
-  console.log("opened");
   const doOpen = async (f?: string) => {
     if (f !== undefined) {
       file = f;
       let contents = await fs.readFile(f, "utf8");
 
-      document.getElementById("filename").innerHTML = ` | ${f}`;
-
       app.addRecentDocument(f);
+
+      console.log(contents);
 
       editor.setValue(contents);
     } else console.log("Unable to open file.");
@@ -30,8 +47,8 @@ async function open(fileToOpen?: string) {
   if (fileToOpen) {
     await doOpen(fileToOpen);
   } else {
-    await getFile();
-    await doOpen();
+    let file = await getFile();
+    await doOpen(file);
   }
 }
 
@@ -39,8 +56,6 @@ async function open(fileToOpen?: string) {
  * Saves the contents of the editor
  */
 async function save() {
-  console.log("save");
-
   const write = async (file: string) => {
     await fs.writeFile(file, editor.getValue(), "utf8");
   };
@@ -83,7 +98,7 @@ function setMode(fileName: string) {
  * Binds the ace component to the editor div
  */
 function initAce() {
-  const editor = edit("editor");
+  editor = edit("editor");
 
   acerequire("ace/theme/monokai");
   acerequire("ace/mode/javascript");
@@ -101,3 +116,10 @@ document.getElementById("open").addEventListener("click", () => open());
 // Handle main process' save/open events
 ipcRenderer.on("save", save);
 ipcRenderer.on("open", (_, file) => open(file));
+
+// Handle character changes
+editor.on("change", (change) => {
+  console.log(change);
+});
+
+makeConnection();

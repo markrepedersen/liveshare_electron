@@ -27,7 +27,6 @@
         "typescript": "^3.9.5"
     },
     "dependencies": {
-        "ace-builds": "^1.4.12",
-        "promise-socket": "^7.0.0"
+        "ace-builds": "^1.4.12"
     }
 }
