@@ -3,123 +3,152 @@ import {remote, ipcRenderer} from "electron";
 import {edit, require as acerequire} from "ace-builds";
 import {createConnection, Socket} from "net";
 
-const app = remote.app;
-const dialog = remote.dialog;
-const modes = acerequire("ace/ext/modelist");
+export class Menu {
+  private static app: any = remote.app;
+  private static dialog: any = remote.dialog;
+  private static modes: any = acerequire("ace/ext/modelist");
 
-let file: string;
-let editor: any;
-let socket: Socket;
+  constructor(private editor: any, private file?: string) {}
 
-function makeConnection() {
-  socket = createConnection({host: "localhost", port: 2000}, () =>
-    console.log("Connected to server.")
-  );
+  /**
+   * Saves the contents of the editor
+   */
+  public async save(): Promise<void> {
+    if (this.file) {
+      await this.saveFile();
+    } else {
+      let saveDialog = await Menu.dialog.showSaveDialog({
+        title: "Select Location",
+      });
 
-  socket.on("data", (data) => {
-    console.log(data.toString());
-    // socket.end();
-  });
-
-  socket.on("end", () => {
-    console.log("disconnected from server");
-  });
-}
-
-/**
- * Opens a file in the editor
- * @param {String} [fileToOpen] A specific file to open.  Omit to show the open dialog.
- */
-async function open(fileToOpen?: string) {
-  const doOpen = async (f?: string) => {
-    if (f !== undefined) {
-      file = f;
-      let contents = await fs.readFile(f, "utf8");
-
-      app.addRecentDocument(f);
-
-      console.log(contents);
-
-      editor.setValue(contents);
-    } else console.log("Unable to open file.");
-  };
-
-  if (fileToOpen) {
-    await doOpen(fileToOpen);
-  } else {
-    let file = await getFile();
-    await doOpen(file);
-  }
-}
-
-/**
- * Saves the contents of the editor
- */
-async function save() {
-  const write = async (file: string) => {
-    await fs.writeFile(file, editor.getValue(), "utf8");
-  };
-
-  if (file) {
-    await write(file);
-  } else {
-    let saveDialog = await dialog.showSaveDialog({title: "Select Location"});
-
-    if (saveDialog.filePath) {
-      file = saveDialog.filePath;
-      await write(file);
+      if (saveDialog.filePath) {
+        this.file = saveDialog.filePath;
+        await this.saveFile();
+      }
     }
   }
-}
 
-/**
- * Prompts the user for a file selection using the electron native file dialog
- * @returns {Promise}
- */
-async function getFile(): Promise<string | undefined> {
-  let openDialog = await dialog.showOpenDialog({properties: ["openFile"]});
-  if (openDialog.filePaths && openDialog.filePaths[0]) {
-    file = openDialog.filePaths[0];
-    return file;
+  /**
+   * Opens a file in the editor
+   * @param {String} [fileToOpen] A specific file to open.  Omit to show the open dialog.
+   */
+  public async open(file?: string): Promise<void> {
+    if (file) {
+      await this.openFile(file);
+    } else {
+      let file = await this.getFile();
+      await this.openFile(file);
+    }
+  }
+
+  /**
+   * Sets the language mode for the given file path.
+   */
+  public setMode(path: string) {
+    let mode = Menu.modes.getModeForPath(path);
+
+    console.log(`Changed mode to ${mode.mode}.`);
+
+    this.editor.session.setMode(mode.mode);
+  }
+
+  /**
+   * Prompts the user for a file selection using the electron native file dialog
+   * @returns {Promise}
+   */
+  private async getFile(): Promise<string | undefined> {
+    let openDialog = await Menu.dialog.showOpenDialog({
+      properties: ["openFile"],
+    });
+    if (openDialog.filePaths && openDialog.filePaths[0]) {
+      this.file = openDialog.filePaths[0];
+      return this.file;
+    }
+  }
+
+  private async saveFile() {
+    await fs.writeFile(this.file, this.editor.getValue(), "utf8");
+  }
+
+  private async openFile(file?: string) {
+    if (file !== undefined) {
+      this.file = file;
+      let contents = await fs.readFile(file, "utf8");
+
+      Menu.app.addRecentDocument(file);
+      this.setMode(file);
+      this.editor.setValue(contents);
+    } else console.log("Unable to open file.");
   }
 }
 
-/**
- * Sets the language mode for the given file name.
- */
-function setMode(fileName: string) {
-  let mode = modes.getModeForPath(fileName);
-  console.log(`$fileName has mode '$mode'.`);
+export class Editor {
+  private _editor: any;
+  private socket: Socket;
+  private menu: Menu;
 
-  editor.session.setMode(mode.mode);
+  constructor() {
+    this._editor = edit("editor");
+    this.menu = new Menu(this._editor);
+    this.socket = createConnection({host: "localhost", port: 2000}, () =>
+      console.log("Connected to server.")
+    );
+  }
+
+  /*
+   * Initalize the editor state.
+   */
+  public init() {
+    this.initDisplayOptions();
+    this.initLanguageTools();
+    this.initMenuHandlerOptions();
+    this.initConnectionOptions();
+  }
+
+  public initLanguageTools() {
+    acerequire("ace/ext/language_tools");
+
+    this._editor.setOptions({
+      enableBasicAutocompletion: true,
+      enableSnippets: true,
+      enableLiveAutocompletion: true,
+    });
+  }
+
+  public initDisplayOptions() {
+    acerequire("ace/theme/monokai");
+    acerequire("ace/mode/javascript");
+
+    this._editor.setShowPrintMargin(false);
+    this._editor.getSession().setMode("ace/mode/javascript");
+    this._editor.setTheme("ace/theme/monokai");
+  }
+
+  // Handle main process' save/open events
+  public initMenuHandlerOptions() {
+    ipcRenderer.on("save", this.menu.save);
+    ipcRenderer.on("open", (_, file) => this.menu.open(file));
+  }
+
+  public initConnectionOptions() {
+    this.socket.on("data", (data) => {
+      console.log(data.toString());
+    });
+
+    this.socket.on("end", () => {
+      console.log("disconnected from server");
+    });
+
+    this._editor.on("change", (change: any) => {
+      console.log(change);
+    });
+
+    this._editor.selection.on("changeSelection", () => {
+      console.log(this._editor.selection.getRange());
+    });
+  }
 }
 
-/**
- * Binds the ace component to the editor div
- */
-function initAce() {
-  editor = edit("editor");
+let editor = new Editor();
 
-  acerequire("ace/theme/monokai");
-  acerequire("ace/mode/javascript");
-
-  editor.getSession().setMode("ace/mode/javascript");
-  editor.setTheme("ace/theme/monokai");
-}
-
-initAce();
-
-// Handle local render save/open events when document loads
-document.getElementById("save").addEventListener("click", () => save());
-document.getElementById("open").addEventListener("click", () => open());
-
-// Handle main process' save/open events
-ipcRenderer.on("save", save);
-ipcRenderer.on("open", (_, file) => open(file));
-
-// Handle character changes
-editor.on("change", (change) => {
-  console.log(change);
-});
-
-makeConnection();
+editor.init();
