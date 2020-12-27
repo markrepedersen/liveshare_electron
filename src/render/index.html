@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+    <link rel="stylesheet" href="styles.css"/>
+    <body>
+        <div class="container">
+            <div class="header">Liveshare <span id="filename"></span></div>
+            <div class="toolbar">
+                <button id="open" type="button">Open...</button>
+                <button id="save" type="button">Save</button>
+            </div>
+            <div id="editor"></div>
+            <div id="status"></div>
+        </div>
+	<script>
+	  var exports = {};
+	</script>
+        <script src="../../node_modules/ace-builds/src-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../../node_modules/ace-builds/src-noconflict/ext-modelist.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../../node_modules/ace-builds/src-noconflict/ext-language_tools.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../../node_modules/ace-builds/src-noconflict/mode-javascript.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../../node_modules/ace-builds/src-noconflict/theme-twilight.js" type="text/javascript" charset="utf-8"></script>
+        <script src="../../dist/render/index.js" type="text/javascript" charset="utf-8"></script>
+    </body>
+</html>
